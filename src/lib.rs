@@ -1,8 +1,8 @@
 mod quaternion;
 mod vector;
 
-use quaternion::Quaternion;
-use vector::Vector;
+pub use quaternion::Quaternion;
+pub use vector::Vector;
 
 const BETA: f64 = 13.601685f64;
 const L: f64 = 8.71;
@@ -21,7 +21,7 @@ impl<T: Into<Quaternion>> Frame<T> {
     pub fn to(self, frame: Frame<&mut Vector>) {
         use Frame::*;
         fn operators(o: f64) -> (Vector, Quaternion) {
-            let (s, c) = (90. - o).to_radians().sin_cos();
+            let (s, c) = (90. + o).to_radians().sin_cos();
             let t = Vector::from([L * c, L * s, 0.]);
             let q = Quaternion::unit(o.to_radians(), Vector::k())
                 * Quaternion::unit(BETA.to_radians(), Vector::i());
@@ -41,11 +41,11 @@ impl<T: Into<Quaternion>> Frame<T> {
             match self {
                 OSS(u) => match frame {
                     M1S1(v) => direct(u, v, 0.),
-                    M1S2(v) => direct(u, v, 60.),
-                    M1S3(v) => direct(u, v, 120.),
-                    M1S4(v) => direct(u, v, 180.),
-                    M1S5(v) => direct(u, v, 240.),
-                    M1S6(v) => direct(u, v, 300.),
+                    M1S2(v) => direct(u, v, -60.),
+                    M1S3(v) => direct(u, v, -120.),
+                    M1S4(v) => direct(u, v, -180.),
+                    M1S5(v) => direct(u, v, -240.),
+                    M1S6(v) => direct(u, v, -300.),
                     M1S7(v) | OSS(v) => {
                         *v = Vector::from(u.into().vector_as_slice());
                     }
@@ -55,23 +55,23 @@ impl<T: Into<Quaternion>> Frame<T> {
                     _ => unimplemented!(),
                 },
                 M1S2(u) => match frame {
-                    OSS(v) => inverse(u, v, 60.),
+                    OSS(v) => inverse(u, v, -60.),
                     _ => unimplemented!(),
                 },
                 M1S3(u) => match frame {
-                    OSS(v) => inverse(u, v, 120.),
+                    OSS(v) => inverse(u, v, -120.),
                     _ => unimplemented!(),
                 },
                 M1S4(u) => match frame {
-                    OSS(v) => inverse(u, v, 180.),
+                    OSS(v) => inverse(u, v, -180.),
                     _ => unimplemented!(),
                 },
                 M1S5(u) => match frame {
-                    OSS(v) => inverse(u, v, 240.),
+                    OSS(v) => inverse(u, v, -240.),
                     _ => unimplemented!(),
                 },
                 M1S6(u) => match frame {
-                    OSS(v) => inverse(u, v, 300.),
+                    OSS(v) => inverse(u, v, -300.),
                     _ => unimplemented!(),
                 },
                 M1S7(u) => match frame {

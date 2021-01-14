@@ -68,7 +68,11 @@ impl From<[i32; 3]> for Vector {
 }
 impl From<&[f64]> for Vector {
     fn from(v: &[f64]) -> Self {
-        Vector([v[0], v[1], v[2]])
+        if v.len()==2 {
+            Vector([v[0], v[1], 0.])
+        } else {
+            Vector([v[0], v[1], v[2]])
+        }
     }
 }
 impl Add for Vector {
