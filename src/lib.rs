@@ -20,33 +20,68 @@ pub enum Frame<T: Into<Quaternion>> {
 impl<T: Into<Quaternion>> Frame<T> {
     pub fn to(self, frame: Frame<&mut Vector>) {
         use Frame::*;
-        fn to_local<U: Into<Quaternion>>(u: U, v: &mut Vector, o: f64) {
-            let p: Quaternion = u.into();
+        fn operators(o: f64) -> (Vector, Quaternion) {
             let (s, c) = (90. - o).to_radians().sin_cos();
             let t = Vector::from([L * c, L * s, 0.]);
             let q = Quaternion::unit(o.to_radians(), Vector::k())
                 * Quaternion::unit(BETA.to_radians(), Vector::i());
+            (t, q)
+        }
+        fn direct<U: Into<Quaternion>>(u: U, v: &mut Vector, o: f64) {
+            let (t, q) = operators(o);
+            let p: Quaternion = u.into();
             *v = Vector::from((&q * p * q.complex_conjugate() + t.into()).vector_as_slice())
         }
+        fn inverse<U: Into<Quaternion>>(u: U, v: &mut Vector, o: f64) {
+            let (t, q) = operators(o);
+            let p: Quaternion = u.into();
+            *v = Vector::from((q.complex_conjugate() * (p - t.into()) * &q).vector_as_slice())
+        }
         {
-            if let OSS(u) = self {
-                match frame {
-                    M1S1(v) => to_local(u, v, 0.),
-                    M1S2(v) => to_local(u, v, 60.),
-                    M1S3(v) => to_local(u, v, 120.),
-                    M1S4(v) => to_local(u, v, 180.),
-                    M1S5(v) => to_local(u, v, 240.),
-                    M1S6(v) => to_local(u, v, 300.),
+            match self {
+                OSS(u) => match frame {
+                    M1S1(v) => direct(u, v, 0.),
+                    M1S2(v) => direct(u, v, 60.),
+                    M1S3(v) => direct(u, v, 120.),
+                    M1S4(v) => direct(u, v, 180.),
+                    M1S5(v) => direct(u, v, 240.),
+                    M1S6(v) => direct(u, v, 300.),
                     M1S7(v) | OSS(v) => {
                         *v = Vector::from(u.into().vector_as_slice());
                     }
-                }
-                Some(())
-            } else {
-                None
+                },
+                M1S1(u) => match frame {
+                    OSS(v) => inverse(u, v, 0.),
+                    _ => unimplemented!(),
+                },
+                M1S2(u) => match frame {
+                    OSS(v) => inverse(u, v, 60.),
+                    _ => unimplemented!(),
+                },
+                M1S3(u) => match frame {
+                    OSS(v) => inverse(u, v, 120.),
+                    _ => unimplemented!(),
+                },
+                M1S4(u) => match frame {
+                    OSS(v) => inverse(u, v, 180.),
+                    _ => unimplemented!(),
+                },
+                M1S5(u) => match frame {
+                    OSS(v) => inverse(u, v, 240.),
+                    _ => unimplemented!(),
+                },
+                M1S6(u) => match frame {
+                    OSS(v) => inverse(u, v, 300.),
+                    _ => unimplemented!(),
+                },
+                M1S7(u) => match frame {
+                    OSS(v) => {
+                        *v = Vector::from(u.into().vector_as_slice());
+                    }
+                    _ => unimplemented!(),
+                },
             }
         }
-        .unwrap()
     }
 }
 
@@ -85,13 +120,26 @@ mod tests {
     }
 
     to_frame! {
-        m1s1: (1,),
-        m1s2: (2,),
-        m1s3: (3,),
-        m1s4: (4,),
-        m1s5: (5,),
-        m1s6: (6,),
-        m1s7: (7,),
-        oss: (7,),
+        oss2m1s1: (1,),
+        oss2m1s2: (2,),
+        oss2m1s3: (3,),
+        oss2m1s4: (4,),
+        oss2m1s5: (5,),
+        oss2m1s6: (6,),
+        oss2m1s7: (7,),
+        oss2oss: (7,),
+    }
+
+    #[test]
+    fn oss_m1sx_oss() {
+        for oo in [Vector::null(), Vector::i(), Vector::j(), Vector::k()].iter() {
+            println!("{:*<5}", "");
+            println!("OSS  : {}", oo);
+            let mut oo1 = Vector::null();
+            OSS(oo.clone()).to(M1S4(&mut oo1));
+            M1S4(oo1.clone()).to(OSS(&mut oo1));
+            println!("M1SX : {}", oo1);
+            println!("{:*<5}", "");
+        }
     }
 }
