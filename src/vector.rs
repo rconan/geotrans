@@ -1,7 +1,6 @@
 use std::cmp::PartialEq;
 use std::fmt;
-use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
-
+use std::ops::{Add, AddAssign, Deref, Div, Mul, Neg, Sub};
 /// Vector
 #[derive(Clone, Debug)]
 pub struct Vector([f64; 3]);
@@ -41,6 +40,12 @@ impl AsRef<[f64]> for Vector {
         &self.0
     }
 }
+impl Deref for Vector {
+    type Target = [f64];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 impl From<Vec<f64>> for Vector {
     fn from(v: Vec<f64>) -> Self {
         Vector([v[0], v[1], v[2]])
@@ -68,7 +73,7 @@ impl From<[i32; 3]> for Vector {
 }
 impl From<&[f64]> for Vector {
     fn from(v: &[f64]) -> Self {
-        if v.len()==2 {
+        if v.len() == 2 {
             Vector([v[0], v[1], 0.])
         } else {
             Vector([v[0], v[1], v[2]])
