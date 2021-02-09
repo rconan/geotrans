@@ -84,6 +84,21 @@ impl<T: Into<Quaternion>> Frame<T> {
         }
     }
 }
+pub fn m1sx_to_oss(sid: usize, u: Vector) -> Vector {
+    use Frame::*;
+    let mut v = Vector::null();
+    match sid {
+        1 =>                 M1S1(u).to(OSS(&mut v)),
+        2 =>                 M1S2(u).to(OSS(&mut v)),
+        3 =>                 M1S3(u).to(OSS(&mut v)),
+        4 =>                 M1S4(u).to(OSS(&mut v)),
+        5 =>                 M1S5(u).to(OSS(&mut v)),
+        6 =>                 M1S6(u).to(OSS(&mut v)),
+        7 =>                 M1S7(u).to(OSS(&mut v)),
+        _ => ()
+    }
+    v
+}
 
 #[cfg(test)]
 mod tests {
