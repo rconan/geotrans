@@ -84,7 +84,7 @@ impl<T: Into<Quaternion>> Frame<T> {
         }
     }
 }
-pub fn m1sx_to_oss(sid: usize, u: Vector) -> Vector {
+pub fn m1_any_to_oss(sid: usize, u: Vector) -> Vector {
     use Frame::*;
     let mut v = Vector::null();
     match sid {
