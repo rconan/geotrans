@@ -7,6 +7,13 @@ pub use vector::Vector;
 const BETA: f64 = 13.601685f64;
 const L: f64 = 8.71;
 
+fn conic(rho: f64) -> f64 {
+    let c = 36f64;
+    let kp = -0.998286;
+    let rho2 = rho * rho;
+    rho2 / (c + (c * c - (kp + 1f64) * rho2).sqrt())
+}
+
 pub enum Frame<T: Into<Quaternion>> {
     OSS(T),
     M1S1(T),
@@ -22,7 +29,7 @@ impl<T: Into<Quaternion>> Frame<T> {
         use Frame::*;
         fn operators(o: f64) -> (Vector, Quaternion) {
             let (s, c) = (90. + o).to_radians().sin_cos();
-            let t = Vector::from([L * c, L * s, 0.]);
+            let t = Vector::from([L * c, L * s, conic(L)]);
             let q = Quaternion::unit(o.to_radians(), Vector::k())
                 * Quaternion::unit(BETA.to_radians(), Vector::i());
             (t, q)
@@ -88,14 +95,29 @@ pub fn m1_any_to_oss(sid: usize, u: Vector) -> Vector {
     use Frame::*;
     let mut v = Vector::null();
     match sid {
-        1 =>                 M1S1(u).to(OSS(&mut v)),
-        2 =>                 M1S2(u).to(OSS(&mut v)),
-        3 =>                 M1S3(u).to(OSS(&mut v)),
-        4 =>                 M1S4(u).to(OSS(&mut v)),
-        5 =>                 M1S5(u).to(OSS(&mut v)),
-        6 =>                 M1S6(u).to(OSS(&mut v)),
-        7 =>                 M1S7(u).to(OSS(&mut v)),
-        _ => ()
+        1 => M1S1(u).to(OSS(&mut v)),
+        2 => M1S2(u).to(OSS(&mut v)),
+        3 => M1S3(u).to(OSS(&mut v)),
+        4 => M1S4(u).to(OSS(&mut v)),
+        5 => M1S5(u).to(OSS(&mut v)),
+        6 => M1S6(u).to(OSS(&mut v)),
+        7 => M1S7(u).to(OSS(&mut v)),
+        _ => (),
+    }
+    v
+}
+pub fn oss_to_any_m1(sid: usize, u: Vector) -> Vector {
+    use Frame::*;
+    let mut v = Vector::null();
+    match sid {
+        1 => OSS(u).to(M1S1(&mut v)),
+        2 => OSS(u).to(M1S2(&mut v)),
+        3 => OSS(u).to(M1S3(&mut v)),
+        4 => OSS(u).to(M1S4(&mut v)),
+        5 => OSS(u).to(M1S5(&mut v)),
+        6 => OSS(u).to(M1S6(&mut v)),
+        7 => OSS(u).to(M1S7(&mut v)),
+        _ => (),
     }
     v
 }
