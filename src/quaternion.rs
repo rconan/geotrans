@@ -1,7 +1,7 @@
+use crate::Vector;
 use std::cmp::PartialEq;
 use std::fmt;
 use std::ops::{Add, Div, Mul, Sub};
-use crate::Vector;
 
 /// Quaternion
 #[derive(Clone, Debug)]

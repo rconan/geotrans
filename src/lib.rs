@@ -29,7 +29,7 @@ impl<T: Into<Quaternion>> Frame<T> {
         use Frame::*;
         fn operators(o: f64) -> (Vector, Quaternion) {
             let (s, c) = (90. + o).to_radians().sin_cos();
-            let t = Vector::from([L * c, L * s, conic(L)]);
+            let t = Vector::from([L * c, L * s, 3.9 + conic(L)]);
             let q = Quaternion::unit(o.to_radians(), Vector::k())
                 * Quaternion::unit(BETA.to_radians(), Vector::i());
             (t, q)
