@@ -3,7 +3,12 @@ name = "geotrans"
 version = "0.1.0"
 authors = ["Rod Conan <rconan@gmto.org>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "Giant Magellan Telescope Geometric Transformations"
+repository = "https://github.com/rconan/geotrans"
+documentation = "https://docs.rs/geotrans"
+readme = "README.md"
+categories = ["science", "simulation"]
+keywords = ["telescope", "astronomy"]
 
 [dependencies]
