@@ -90,6 +90,11 @@ impl From<Vector> for Vec<f64> {
         (*v).into()
     }
 }
+impl From<Vector> for [f64; 3] {
+    fn from(v: Vector) -> Self {
+        v.0
+    }
+}
 impl Add for Vector {
     type Output = Self;
     fn add(self, other: Self) -> Self {
