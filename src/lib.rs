@@ -1,12 +1,222 @@
+//! Geometric transformation for the GMT segmented mirrors
+
+use std::marker::PhantomData;
+
 mod quaternion;
 mod vector;
 
 pub use quaternion::Quaternion;
 pub use vector::Vector;
 
+#[derive(thiserror::Error, Debug)]
+pub enum GeotransError {
+    #[error("The segment id {0} is not in the range [1,7]")]
+    SegmentId(i32),
+}
+
 const BETA: f64 = 13.601685f64;
 const L: f64 = 8.71;
 
+/// Conic surface
+pub struct Conic {
+    /// Radius of curvature
+    radius: f64,
+    /// Conic constant
+    constant: f64,
+}
+impl Conic {
+    /// GMT M1 conic surface
+    pub fn m1() -> Self {
+        Self {
+            radius: 36f64,
+            constant: -0.9982857,
+        }
+    }
+    /// GMT M2 conic surface
+    pub fn m2() -> Self {
+        Self {
+            radius: -4.1639009,
+            constant: -0.71692784,
+        }
+    }
+    /// Conic surface height
+    pub fn height(&self, rho: f64) -> f64 {
+        let c = self.radius.abs();
+        let rho2 = rho * rho;
+        self.radius.signum() * rho2 / (c + (c * c - (self.constant + 1f64) * rho2).sqrt())
+    }
+}
+
+/// Type representing the GMT primary mirror
+pub struct M1;
+/// Type representing the GMT secondary mirror
+pub struct M2;
+
+/// GMT segmented mirror
+pub struct Segment<M> {
+    /// Segment # id
+    id: i32,
+    /// Mirror height
+    height: f64,
+    /// Radial inclination angle
+    beta: Option<f64>,
+    /// Distance to the origin
+    distance: Option<f64>,
+    /// Segment clocking angle \[degree\]
+    cloking: Option<i32>,
+    /// Conic surface
+    conic: Conic,
+    mirror: PhantomData<M>,
+}
+
+/// Segment specialization traits
+pub trait SegmentTrait {
+    fn new(o: i32) -> Result<Self, GeotransError>
+    where
+        Self: Sized;
+    fn rotation(&self) -> Option<Quaternion>;
+}
+impl<M> Segment<M> {
+    /// Returns a [`Vector`] with the segment origin coordinates in the OSS
+    fn translation(&self) -> Vector {
+        if self.id < 7 {
+            let o = self.cloking.unwrap() as f64;
+            let d = self.distance.unwrap();
+            let z = self.conic.height(d);
+            let (s, c) = (90. + o).to_radians().sin_cos();
+            Vector::from([d * c, d * s, self.height + z])
+        } else {
+            Vector::from([0., 0., self.height])
+        }
+    }
+}
+impl SegmentTrait for Segment<M1> {
+    /// Returns [`M1`] [`Segment`] `id`
+    fn new(id: i32) -> Result<Self, GeotransError> {
+        match id {
+            7 => Ok(Self {
+                id: 7,
+                height: 3.9,
+                beta: None,
+                distance: None,
+                cloking: None,
+                conic: Conic::m1(),
+                mirror: PhantomData,
+            }),
+            id @ 1..=6 => Ok(Self {
+                id,
+                height: 3.9,
+                beta: Some(13.601685f64),
+                distance: Some(8.71),
+                cloking: Some(-60i32 * (id - 1)),
+                conic: Conic::m1(),
+                mirror: PhantomData,
+            }),
+            _ => Err(GeotransError::SegmentId(id)),
+        }
+    }
+    /// Returns a [`Quaternion`] representing the 3D rotation of a [`M1`] [`Segment`] frame in the OSS
+    fn rotation(&self) -> Option<Quaternion> {
+        if self.id < 7 {
+            let o = self.cloking.unwrap() as f64;
+            Some(
+                Quaternion::unit(o.to_radians(), Vector::k())
+                    * Quaternion::unit(self.beta.unwrap().to_radians(), Vector::i()),
+            )
+        } else {
+            None
+        }
+    }
+}
+impl SegmentTrait for Segment<M2> {
+    /// Returns [`M2`] [`Segment`] `id`
+    fn new(id: i32) -> Result<Self, GeotransError> {
+        match id {
+            7 => Ok(Self {
+                id: 7,
+                height: 3.9 + 20.26247614,
+                beta: None,
+                distance: None,
+                cloking: None,
+                conic: Conic::m2(),
+                mirror: PhantomData,
+            }),
+            id @ 1..=6 => Ok(Self {
+                id,
+                height: 3.9 + 20.26247614,
+                beta: Some(-14.777498),
+                distance: Some(1.08774),
+                cloking: Some(180i32 - 60i32 * (id - 1)),
+                conic: Conic::m2(),
+                mirror: PhantomData,
+            }),
+            _ => Err(GeotransError::SegmentId(id)),
+        }
+    }
+    /// Returns a [`Quaternion`] representing the 3D rotation of a [`M2`] [`Segment`] frame in the OSS
+    fn rotation(&self) -> Option<Quaternion> {
+        if self.id < 7 {
+            let o = self.cloking.unwrap() as f64;
+            Some(
+                Quaternion::unit(o.to_radians(), Vector::k())
+                    * Quaternion::unit(std::f64::consts::PI, Vector::j())
+                    * Quaternion::unit(self.beta.unwrap().to_radians(), Vector::i()),
+            )
+        } else {
+            None
+        }
+    }
+}
+
+/// Geometric tranformation with respect to the OSS coordinate system
+pub trait Transform {
+    /// Transforms the coordinates given in the OSS into a segment
+    fn fro<M>(self, maybe_segment: Result<Segment<M>, GeotransError>) -> Result<Self, GeotransError>
+    where
+        Self: Into<Vector>,
+        Vector: Into<Self>,
+        Segment<M>: SegmentTrait,
+    {
+        maybe_segment.map(|segment| {
+            let u: Vector = self.into();
+            let t = segment.translation();
+            if let Some(q) = segment.rotation() {
+                let p: Quaternion = From::<Vector>::from(u);
+                let v = Vector::from(
+                    (q.complex_conjugate() * (p - From::<Vector>::from(t)) * &q).vector_as_slice(),
+                );
+                v.into()
+            } else {
+                (u - t).into()
+            }
+        })
+    }
+    /// Transforms the coordinates of a segment into the OSS
+    fn to<M>(self, maybe_segment: Result<Segment<M>, GeotransError>) -> Result<Self, GeotransError>
+    where
+        Self: Into<Vector>,
+        Vector: Into<Self>,
+        Segment<M>: SegmentTrait,
+    {
+        maybe_segment.map(|segment| {
+            let u: Vector = self.into();
+            let t = segment.translation();
+            if let Some(q) = segment.rotation() {
+                let p: Quaternion = From::<Vector>::from(u);
+                let v = Vector::from(
+                    (&q * p * q.complex_conjugate() + From::<Vector>::from(t)).vector_as_slice(),
+                );
+                v.into()
+            } else {
+                (u + t).into()
+            }
+        })
+    }
+}
+impl Transform for [f64; 3] {}
+impl Transform for Vec<f64> {}
+
+#[deprecated(since = "0.2.0", note = "Users should instead use the Transform trait")]
 fn conic(rho: f64) -> f64 {
     let c = 36f64;
     let kp = -0.998286;
@@ -14,6 +224,7 @@ fn conic(rho: f64) -> f64 {
     rho2 / (c + (c * c - (kp + 1f64) * rho2).sqrt())
 }
 
+#[deprecated(since = "0.2.0", note = "Users should instead use the Transform trait")]
 pub enum Frame<T: Into<Quaternion>> {
     OSS(T),
     M1S1(T),
@@ -91,6 +302,7 @@ impl<T: Into<Quaternion>> Frame<T> {
         }
     }
 }
+#[deprecated(since = "0.2.0", note = "Users should instead use the Transform trait")]
 pub fn m1_any_to_oss<T: Into<Vector>>(sid: usize, p: T) -> Vector {
     use Frame::*;
     let u: Vector = p.into();
@@ -107,6 +319,7 @@ pub fn m1_any_to_oss<T: Into<Vector>>(sid: usize, p: T) -> Vector {
     }
     v
 }
+#[deprecated(since = "0.2.0", note = "Users should instead use the Transform trait")]
 pub fn oss_to_any_m1<T: Into<Vector>>(sid: usize, p: T) -> Vector {
     use Frame::*;
     let u: Vector = p.into();
@@ -179,6 +392,45 @@ mod tests {
             M1S4(oo1.clone()).to(OSS(&mut oo1));
             println!("M1SX : {}", oo1);
             println!("{:*<5}", "");
+        }
+    }
+
+    #[test]
+    fn transform_m1_to() {
+        for sid in 1..=8 {
+            let u = [0.1f64, 0.1, 0.];
+            let v = u.to(Segment::<M1>::new(sid));
+            println!("M1S{} - v: {:#?}", sid, v);
+        }
+    }
+    #[test]
+    fn transform_m1_tofro() {
+        for sid in 1..=7 {
+            let u = [0.1f64, 0.1, 0.];
+            let v = u
+                .to(Segment::<M1>::new(sid))
+                .unwrap()
+                .fro(Segment::<M1>::new(sid));
+            println!("M1S{} - v: {:#?}", sid, v);
+        }
+    }
+    #[test]
+    fn transform_m2_to() {
+        for sid in 1..=8 {
+            let u = [0.1f64, 0.1, 0.];
+            let v = u.to(Segment::<M2>::new(sid));
+            println!("M2S{} - v: {:#?}", sid, v);
+        }
+    }
+    #[test]
+    fn transform_m2_tofro() {
+        for sid in 1..=7 {
+            let u = [0.1f64, 0.1, 0.];
+            let v = u
+                .to(Segment::<M2>::new(sid))
+                .unwrap()
+                .fro(Segment::<M2>::new(sid));
+            println!("M1S{} - v: {:#?}", sid, v);
         }
     }
 }

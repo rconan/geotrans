@@ -1,6 +1,6 @@
 [package]
 name = "geotrans"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Rod Conan <rconan@gmto.org>"]
 edition = "2018"
 license = "MIT"
@@ -12,3 +12,4 @@ categories = ["science", "simulation"]
 keywords = ["telescope", "astronomy"]
 
 [dependencies]
+thiserror = "1.0.30"
