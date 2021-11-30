@@ -85,6 +85,11 @@ impl From<&[f64]> for Vector {
         }
     }
 }
+impl From<&mut [f64; 3]> for Vector {
+    fn from(v: &mut [f64; 3]) -> Self {
+        Vector([v[0], v[1], v[2]])
+    }
+}
 impl From<Vector> for Vec<f64> {
     fn from(v: Vector) -> Self {
         (*v).into()

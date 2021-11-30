@@ -9,7 +9,7 @@ pub use quaternion::Quaternion;
 pub use vector::Vector;
 
 #[derive(thiserror::Error, Debug)]
-pub enum GeotransError {
+pub enum Error {
     #[error("The segment id {0} is not in the range [1,7]")]
     SegmentId(i32),
 }
@@ -48,8 +48,10 @@ impl Conic {
 }
 
 /// Type representing the GMT primary mirror
+#[derive(Default)]
 pub struct M1;
 /// Type representing the GMT secondary mirror
+#[derive(Default)]
 pub struct M2;
 
 /// GMT segmented mirror
@@ -71,7 +73,7 @@ pub struct Segment<M> {
 
 /// Segment specialization traits
 pub trait SegmentTrait {
-    fn new(o: i32) -> Result<Self, GeotransError>
+    fn new(o: i32) -> Result<Self, Error>
     where
         Self: Sized;
     fn rotation(&self) -> Option<Quaternion>;
@@ -92,7 +94,7 @@ impl<M> Segment<M> {
 }
 impl SegmentTrait for Segment<M1> {
     /// Returns [`M1`] [`Segment`] `id`
-    fn new(id: i32) -> Result<Self, GeotransError> {
+    fn new(id: i32) -> Result<Self, Error> {
         match id {
             7 => Ok(Self {
                 id: 7,
@@ -112,7 +114,7 @@ impl SegmentTrait for Segment<M1> {
                 conic: Conic::m1(),
                 mirror: PhantomData,
             }),
-            _ => Err(GeotransError::SegmentId(id)),
+            _ => Err(Error::SegmentId(id)),
         }
     }
     /// Returns a [`Quaternion`] representing the 3D rotation of a [`M1`] [`Segment`] frame in the OSS
@@ -130,7 +132,7 @@ impl SegmentTrait for Segment<M1> {
 }
 impl SegmentTrait for Segment<M2> {
     /// Returns [`M2`] [`Segment`] `id`
-    fn new(id: i32) -> Result<Self, GeotransError> {
+    fn new(id: i32) -> Result<Self, Error> {
         match id {
             7 => Ok(Self {
                 id: 7,
@@ -144,13 +146,13 @@ impl SegmentTrait for Segment<M2> {
             id @ 1..=6 => Ok(Self {
                 id,
                 height: 3.9 + 20.26247614,
-                beta: Some(-14.777498),
+                beta: Some(14.777498),
                 distance: Some(1.08774),
                 cloking: Some(180i32 - 60i32 * (id - 1)),
                 conic: Conic::m2(),
                 mirror: PhantomData,
             }),
-            _ => Err(GeotransError::SegmentId(id)),
+            _ => Err(Error::SegmentId(id)),
         }
     }
     /// Returns a [`Quaternion`] representing the 3D rotation of a [`M2`] [`Segment`] frame in the OSS
@@ -168,10 +170,10 @@ impl SegmentTrait for Segment<M2> {
     }
 }
 
-/// Geometric tranformation with respect to the OSS coordinate system
+/// Geometric transformation with respect to the OSS coordinate system
 pub trait Transform {
     /// Transforms the coordinates given in the OSS into a segment
-    fn fro<M>(self, maybe_segment: Result<Segment<M>, GeotransError>) -> Result<Self, GeotransError>
+    fn fro<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<Self, Error>
     where
         Self: Into<Vector>,
         Vector: Into<Self>,
@@ -192,7 +194,7 @@ pub trait Transform {
         })
     }
     /// Transforms the coordinates of a segment into the OSS
-    fn to<M>(self, maybe_segment: Result<Segment<M>, GeotransError>) -> Result<Self, GeotransError>
+    fn to<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<Self, Error>
     where
         Self: Into<Vector>,
         Vector: Into<Self>,
@@ -215,6 +217,65 @@ pub trait Transform {
 }
 impl Transform for [f64; 3] {}
 impl Transform for Vec<f64> {}
+/// Mutable geometric transformation with respect to the OSS coordinate system
+pub trait TransformMut<'a> {
+    /// Transforms the coordinates given in the OSS into a segment
+    fn fro<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait;
+    /// Transforms the coordinates of a segment into the OSS
+    fn to<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait;
+}
+impl<'a> TransformMut<'a> for &'a mut [f64; 3] {
+    /// Transforms the coordinates given in the OSS into a segment
+    fn fro<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait,
+    {
+        maybe_segment.map(|segment| {
+            let u: Vector = self.to_owned().into();
+            let t = segment.translation();
+            let v = if let Some(q) = segment.rotation() {
+                let p: Quaternion = From::<Vector>::from(u);
+                Vector::from(
+                    (q.complex_conjugate() * (p - From::<Vector>::from(t)) * &q).vector_as_slice(),
+                )
+            } else {
+                u - t
+            };
+            self[0] = (*v)[0];
+            self[1] = (*v)[1];
+            self[2] = (*v)[2];
+        })
+    }
+    /// Transforms the coordinates of a segment into the OSS
+    fn to<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait,
+    {
+        maybe_segment.map(|segment| {
+            let u: Vector = self.to_owned().into();
+            let t = segment.translation();
+            let v = if let Some(q) = segment.rotation() {
+                let p: Quaternion = From::<Vector>::from(u);
+                Vector::from(
+                    (&q * p * q.complex_conjugate() + From::<Vector>::from(t)).vector_as_slice(),
+                )
+            } else {
+                u + t
+            };
+            self[0] = (*v)[0];
+            self[1] = (*v)[1];
+            self[2] = (*v)[2];
+        })
+    }
+}
 
 #[deprecated(since = "0.2.0", note = "Users should instead use the Transform trait")]
 fn conic(rho: f64) -> f64 {
@@ -224,7 +285,6 @@ fn conic(rho: f64) -> f64 {
     rho2 / (c + (c * c - (kp + 1f64) * rho2).sqrt())
 }
 
-#[deprecated(since = "0.2.0", note = "Users should instead use the Transform trait")]
 pub enum Frame<T: Into<Quaternion>> {
     OSS(T),
     M1S1(T),
