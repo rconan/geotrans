@@ -18,6 +18,7 @@ const BETA: f64 = 13.601685f64;
 const L: f64 = 8.71;
 
 /// Conic surface
+#[derive(Debug, Clone)]
 pub struct Conic {
     /// Radius of curvature
     radius: f64,
@@ -48,13 +49,14 @@ impl Conic {
 }
 
 /// Type representing the GMT primary mirror
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct M1;
 /// Type representing the GMT secondary mirror
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct M2;
 
 /// GMT segmented mirror
+#[derive(Debug, Clone)]
 pub struct Segment<M> {
     /// Segment # id
     id: i32,
@@ -80,7 +82,7 @@ pub trait SegmentTrait {
 }
 impl<M> Segment<M> {
     /// Returns a [`Vector`] with the segment origin coordinates in the OSS
-    fn translation(&self) -> Vector {
+    pub fn translation(&self) -> Vector {
         if self.id < 7 {
             let o = self.cloking.unwrap() as f64;
             let d = self.distance.unwrap();
@@ -193,6 +195,24 @@ pub trait Transform {
             }
         })
     }
+    /// Transforms a the vector given in the OSS into a segment
+    fn vfrov<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<Self, Error>
+    where
+        Self: Into<Vector>,
+        Vector: Into<Self>,
+        Segment<M>: SegmentTrait,
+    {
+        maybe_segment.map(|segment| {
+            if let Some(q) = segment.rotation() {
+                let u: Vector = self.into();
+                let p: Quaternion = From::<Vector>::from(u);
+                let v = Vector::from((q.complex_conjugate() * p * &q).vector_as_slice());
+                v.into()
+            } else {
+                self
+            }
+        })
+    }
     /// Transforms the coordinates of a segment into the OSS
     fn to<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<Self, Error>
     where
@@ -214,6 +234,24 @@ pub trait Transform {
             }
         })
     }
+    /// Transforms a vector of a segment into the OSS
+    fn vtov<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<Self, Error>
+    where
+        Self: Into<Vector>,
+        Vector: Into<Self>,
+        Segment<M>: SegmentTrait,
+    {
+        maybe_segment.map(|segment| {
+            if let Some(q) = segment.rotation() {
+                let u: Vector = self.into();
+                let p: Quaternion = From::<Vector>::from(u);
+                let v = Vector::from((&q * p * q.complex_conjugate()).vector_as_slice());
+                v.into()
+            } else {
+                self
+            }
+        })
+    }
 }
 impl Transform for [f64; 3] {}
 impl Transform for Vec<f64> {}
@@ -224,8 +262,18 @@ pub trait TransformMut<'a> {
     where
         Self: Into<Vector>,
         Segment<M>: SegmentTrait;
+    /// Transforms a vector coordinates given in the OSS into a segment
+    fn vfrov<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait;
     /// Transforms the coordinates of a segment into the OSS
     fn to<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait;
+    /// Transforms a segment of a segment into the OSS
+    fn vtov<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
     where
         Self: Into<Vector>,
         Segment<M>: SegmentTrait;
@@ -237,20 +285,18 @@ impl<'a> TransformMut<'a> for &'a mut [f64; 3] {
         Self: Into<Vector>,
         Segment<M>: SegmentTrait,
     {
-        maybe_segment.map(|segment| {
-            let u: Vector = self.to_owned().into();
-            let t = segment.translation();
-            let v = if let Some(q) = segment.rotation() {
-                let p: Quaternion = From::<Vector>::from(u);
-                Vector::from(
-                    (q.complex_conjugate() * (p - From::<Vector>::from(t)) * &q).vector_as_slice(),
-                )
-            } else {
-                u - t
-            };
-            self[0] = (*v)[0];
-            self[1] = (*v)[1];
-            self[2] = (*v)[2];
+        self.to_owned().fro(maybe_segment).map(|v| {
+            let _ = std::mem::replace(self, v);
+        })
+    }
+    /// Transforms a vector given in the OSS into a segment
+    fn vfrov<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait,
+    {
+        self.to_owned().vfrov(maybe_segment).map(|v| {
+            let _ = std::mem::replace(self, v);
         })
     }
     /// Transforms the coordinates of a segment into the OSS
@@ -259,20 +305,18 @@ impl<'a> TransformMut<'a> for &'a mut [f64; 3] {
         Self: Into<Vector>,
         Segment<M>: SegmentTrait,
     {
-        maybe_segment.map(|segment| {
-            let u: Vector = self.to_owned().into();
-            let t = segment.translation();
-            let v = if let Some(q) = segment.rotation() {
-                let p: Quaternion = From::<Vector>::from(u);
-                Vector::from(
-                    (&q * p * q.complex_conjugate() + From::<Vector>::from(t)).vector_as_slice(),
-                )
-            } else {
-                u + t
-            };
-            self[0] = (*v)[0];
-            self[1] = (*v)[1];
-            self[2] = (*v)[2];
+        self.to_owned().to(maybe_segment).map(|v| {
+            let _ = std::mem::replace(self, v);
+        })
+    }
+    /// Transforms a vector of a segment into the OSS
+    fn vtov<M>(self, maybe_segment: Result<Segment<M>, Error>) -> Result<(), Error>
+    where
+        Self: Into<Vector>,
+        Segment<M>: SegmentTrait,
+    {
+        self.to_owned().vtov(maybe_segment).map(|v| {
+            let _ = std::mem::replace(self, v);
         })
     }
 }
@@ -456,11 +500,36 @@ mod tests {
     }
 
     #[test]
-    fn transform_m1_to() {
+    fn transform_imut_m1_to() {
         for sid in 1..=8 {
             let u = [0.1f64, 0.1, 0.];
             let v = u.to(Segment::<M1>::new(sid));
             println!("M1S{} - v: {:#?}", sid, v);
+        }
+    }
+    #[test]
+    fn transform_imut_m1_vtov() {
+        for sid in 1..=8 {
+            let u = [0.1f64, 0.1, 0.];
+            let v = u.vtov(Segment::<M1>::new(sid));
+            println!("M1S{} - v: {:#?}", sid, v);
+        }
+    }
+    #[test]
+    fn transform_mut_m1_to() {
+        for sid in 1..=8 {
+            let mut u = [0.1f64, 0.1, 0.];
+            (&mut u).to(Segment::<M1>::new(sid)).unwrap();
+            println!("M1S{} - u: {:#?}", sid, u);
+        }
+    }
+    #[test]
+    fn transform_mut_m1_tofro() {
+        for sid in 1..=7 {
+            let mut u = [0.1f64, 0.1, 0.];
+            (&mut u).to(Segment::<M1>::new(sid)).unwrap();
+            (&mut u).fro(Segment::<M1>::new(sid)).unwrap();
+            println!("M1S{} - v: {:#?}", sid, u);
         }
     }
     #[test]
