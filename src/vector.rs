@@ -223,6 +223,16 @@ impl fmt::Display for Vector {
     }
 }
 
+impl IntoIterator for Vector {
+    type Item = f64;
+
+    type IntoIter = std::array::IntoIter<Self::Item, 3>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIterator::into_iter(self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

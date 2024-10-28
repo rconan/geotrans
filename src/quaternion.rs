@@ -1,5 +1,6 @@
 use crate::Vector;
 use std::cmp::PartialEq;
+use std::f64::consts::FRAC_PI_2;
 use std::fmt;
 use std::ops::{Add, Div, Mul, Sub};
 
@@ -65,6 +66,24 @@ impl Quaternion {
     pub fn vector_as_slice(&self) -> &[f64] {
         self.vector.as_ref()
     }
+    pub fn euler_angles(&self) -> (f64, f64, f64) {
+        let w = self.scalar;
+        let [x, y, z] = self.vector.clone().into();
+        // roll (x-axis rotation)
+        let sinr_cosp = 2. * (w * x + y * z);
+        let cosr_cosp = 1. - 2. * (x * x + y * y);
+        let roll = sinr_cosp.atan2(cosr_cosp);
+
+        // pitch (y-axis rotation)
+        let sinp = (1. + 2. * (w * y - x * z)).sqrt();
+        let cosp = (1. - 2. * (w * y - x * z)).sqrt();
+        let pitch = 2. * sinp.atan2(cosp) - FRAC_PI_2;
+        // yaw (z-axis rotation)
+        let siny_cosp = 2. * (w * z + x * y);
+        let cosy_cosp = 1. - 2. * (y * y + z * z);
+        let yaw = siny_cosp.atan2(cosy_cosp);
+        (roll, pitch, yaw)
+    }
 }
 impl From<Vector> for Quaternion {
     fn from(v: Vector) -> Self {
@@ -86,31 +105,33 @@ impl From<&[f64]> for Quaternion {
         Quaternion::pure(Vector::from(v).clone())
     }
 }
+impl<T: Into<Quaternion>> Mul<T> for Quaternion {
+    type Output = Quaternion;
+    fn mul(self, rhs: T) -> Quaternion {
+        let rhs: Quaternion = rhs.into();
+        Quaternion {
+            scalar: self.scalar * rhs.scalar - self.vector.dot(&rhs.vector),
+            vector: self.scalar * &rhs.vector
+                + rhs.scalar * &self.vector
+                + self.vector.cross(&rhs.vector),
+        }
+    }
+}
+impl<T: Into<Quaternion>> Mul<T> for &Quaternion {
+    type Output = Quaternion;
+    fn mul(self, rhs: T) -> Quaternion {
+        let rhs: Quaternion = rhs.into();
+        Quaternion {
+            scalar: self.scalar * rhs.scalar - self.vector.dot(&rhs.vector),
+            vector: self.scalar * &rhs.vector
+                + rhs.scalar * &self.vector
+                + self.vector.cross(&rhs.vector),
+        }
+    }
+}
 impl Mul for &Quaternion {
     type Output = Quaternion;
     fn mul(self, rhs: &Quaternion) -> Quaternion {
-        Quaternion {
-            scalar: self.scalar * rhs.scalar - self.vector.dot(&rhs.vector),
-            vector: self.scalar * &rhs.vector
-                + rhs.scalar * &self.vector
-                + self.vector.cross(&rhs.vector),
-        }
-    }
-}
-impl Mul<Quaternion> for &Quaternion {
-    type Output = Quaternion;
-    fn mul(self, rhs: Quaternion) -> Quaternion {
-        Quaternion {
-            scalar: self.scalar * rhs.scalar - self.vector.dot(&rhs.vector),
-            vector: self.scalar * &rhs.vector
-                + rhs.scalar * &self.vector
-                + self.vector.cross(&rhs.vector),
-        }
-    }
-}
-impl Mul for Quaternion {
-    type Output = Quaternion;
-    fn mul(self, rhs: Quaternion) -> Quaternion {
         Quaternion {
             scalar: self.scalar * rhs.scalar - self.vector.dot(&rhs.vector),
             vector: self.scalar * &rhs.vector
@@ -170,6 +191,8 @@ impl fmt::Display for Quaternion {
 
 #[cfg(test)]
 mod tests {
+    use std::f64::EPSILON;
+
     use super::*;
 
     #[test]
@@ -193,5 +216,32 @@ mod tests {
         let q = Quaternion::new(2., [-1., 2., 3.]);
         let m = &p * &q;
         assert_eq!(m, Quaternion::new(8., [-9., -2., 11.]));
+    }
+    #[test]
+    fn euler_angles_roll() {
+        let q = Quaternion::unit(10f64.to_radians(), Vector::i());
+        let (r, p, y) = q.euler_angles();
+        println!("roll : {}deg", r.to_degrees());
+        println!("pitch: {}deg", p.to_degrees());
+        println!("yaw  : {}deg", y.to_degrees());
+        assert!((r.to_degrees() - 10f64).abs() < 1e2 * EPSILON)
+    }
+    #[test]
+    fn euler_angles_pitch() {
+        let q = Quaternion::unit(-20f64.to_radians(), Vector::j());
+        let (r, p, y) = q.euler_angles();
+        println!("roll : {}deg", r.to_degrees());
+        println!("pitch: {}deg", p.to_degrees());
+        println!("yaw  : {}deg", y.to_degrees());
+        assert!((p.to_degrees() - -20f64).abs() < 1e2 * EPSILON)
+    }
+    #[test]
+    fn euler_angles_yaw() {
+        let q = Quaternion::unit(30f64.to_radians(), Vector::k());
+        let (r, p, y) = q.euler_angles();
+        println!("roll : {}deg", r.to_degrees());
+        println!("pitch: {}deg", p.to_degrees());
+        println!("yaw  : {}deg", y.to_degrees());
+        assert!((y.to_degrees() - 30f64).abs() < 1e2 * EPSILON)
     }
 }
