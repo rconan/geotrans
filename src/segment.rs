@@ -116,7 +116,10 @@ impl SegmentTrait for Segment<M2> {
                     * Quaternion::unit(self.beta.unwrap().to_radians(), Vector::i()),
             )
         } else {
-            None
+            Some(
+                Quaternion::unit(180f64.to_radians(), Vector::k())
+                    * Quaternion::unit(std::f64::consts::PI, Vector::j()),
+            )
         }
     }
 }
